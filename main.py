@@ -1,11 +1,13 @@
 import os
 import json
 import time
+import sys
 from scholarly import scholarly
 from rich.console import Console
 from rich.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import numpy as np
 
 
 def load_cache(author_id, cache_dir="cache"):
@@ -61,32 +63,83 @@ def fetch_author_data(author_id):
     data['fetched_at'] = time.time()
     return data
 
+def linear_fit(x, y):
+    """Fit model y=a*x+b."""
+    o = np.ones_like(x)
+    A = np.vstack([x, o]).T
+    a, b = np.linalg.lstsq(A, y)[0]
+    return a, b
+
+def panel_idx(ax1, years, citations, publications):
+    color = 'tab:blue'
+    ax1.set_xlabel('Year')
+    ax1.set_ylabel('Citations', color=color)
+    ax1.plot(years, citations, color=color, marker='o', label='Citations')
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+
+    ax2 = ax1.twinx()
+    color = 'tab:red'
+    ax2.set_ylabel('Publications', color=color)
+    ax2.plot(years, publications, color=color, marker='s', label='Publications')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+def panel_cum(ax1, years, citations, publications, nfit=5):
+    # compute cumulative sums
+    cum_citations = np.cumsum(citations)
+    cum_publications = np.cumsum(publications)
+    sqrt_cum_citations = np.sqrt(cum_citations) # Scaled data.
+    pa, pb = linear_fit(years[-nfit:], cum_publications[-nfit:])
+    py = np.ceil(-pb/pa)
+    ca, cb = linear_fit(years[-nfit:], sqrt_cum_citations[-nfit:])
+    cy = np.ceil(-cb/ca)
+    # Prediction.
+    predicted_publications_years = np.linspace(py, years[-1], 10)
+    predicted_cum_publications = pa*predicted_publications_years+pb
+    predicted_citations_years = np.linspace(cy, years[-1], 10)
+    predicted_sqrt_cum_citations = ca*predicted_citations_years+cb
+
+    color = 'tab:blue'
+    ax1.set_xlabel('Year')
+    ax1.set_ylabel('Cumulative Citations', color=color)
+    # apply sqrt scaling on y data
+    ax1.plot(years, sqrt_cum_citations, color=color, marker='o', label='Cumulative Citations (sqrt)')
+    ax1.plot(predicted_citations_years, predicted_sqrt_cum_citations, color=color, ls='--')
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    # custom formatter to square the tick label
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{int(y**2)}"))
+    ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    ax1.axvline(cy, ls=':', color=color)
+    ax1.set_xlim(years[0], years[-1])
+    ax1.text(0.05, 0.9, f'{ca:.2f}', ha='left', va='center', transform=ax1.transAxes, color=color)
+
+    ax2 = ax1.twinx()
+    color = 'tab:red'
+    ax2.set_ylabel('Cumulative Publications', color=color)
+    ax2.plot(years, cum_publications, color=color, marker='s', label='Cumulative Publications')
+    ax2.plot(predicted_publications_years, predicted_cum_publications, color=color, ls='--')
+    ax2.tick_params(axis='y', labelcolor=color)
+    ax2.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    ax2.axvline(py, ls=':', color=color)
+    ax2.set_xlim(years[0], years[-1])
+    ax2.text(0.05, 0.95, f'{pa:.2f}', ha='left', va='center', transform=ax2.transAxes, color=color)
+
 
 def plot_data(author_name, citedby, pubs, force_plot):
+    years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
+    years = np.asarray(years)
+    years_str = [str(y) for y in years]
+    citations = [citedby.get(year, 0) for year in years_str]
+    publications = [pubs.get(year, 0) for year in years_str]
+
     os.makedirs("plots", exist_ok=True)
     # index plot
     idx_filename = f"plots/idx_{author_name.replace(' ', '_')}.pdf"
     if not os.path.exists(idx_filename) or force_plot:
-        years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
-        years_str = [str(y) for y in years]
-        citations = [citedby.get(year, 0) for year in years_str]
-        publications = [pubs.get(year, 0) for year in years_str]
-
         fig, ax1 = plt.subplots()
-        color = 'tab:blue'
-        ax1.set_xlabel('Year')
-        ax1.set_ylabel('Citations', color=color)
-        ax1.plot(years, citations, color=color, marker='o', label='Citations')
-        ax1.tick_params(axis='y', labelcolor=color)
-        ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-
-        ax2 = ax1.twinx()
-        color = 'tab:red'
-        ax2.set_ylabel('Publications', color=color)
-        ax2.plot(years, publications, color=color, marker='s', label='Publications')
-        ax2.tick_params(axis='y', labelcolor=color)
-
-        plt.title(f"{author_name} - Citations and Publications Over Time")
+        panel_idx(ax1, years, citations, publications)
+        ax1.set_title(f"{author_name}")
         fig.tight_layout()
         plt.savefig(idx_filename)
         print(f"Index plot saved to {idx_filename}")
@@ -97,42 +150,9 @@ def plot_data(author_name, citedby, pubs, force_plot):
     # cumulative plot with sqrt scale for citations
     cum_filename = f"plots/cum_{author_name.replace(' ', '_')}.pdf"
     if not os.path.exists(cum_filename) or force_plot:
-        years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
-        years_str = [str(y) for y in years]
-        citations = [citedby.get(year, 0) for year in years_str]
-        publications = [pubs.get(year, 0) for year in years_str]
-        # compute cumulative sums
-        cum_citations = []
-        cum_publications = []
-        total_cit = 0
-        total_pub = 0
-        for c, p in zip(citations, publications):
-            total_cit += c
-            total_pub += p
-            cum_citations.append(total_cit)
-            cum_publications.append(total_pub)
-
         fig, ax1 = plt.subplots()
-        color = 'tab:blue'
-        ax1.set_xlabel('Year')
-        ax1.set_ylabel('Cumulative Citations', color=color)
-        # apply sqrt scaling on y data
-        sqrt_cum_citations = [val**0.5 for val in cum_citations]
-        ax1.plot(years, sqrt_cum_citations, color=color, marker='o', label='Cumulative Citations (sqrt)')
-        ax1.tick_params(axis='y', labelcolor=color)
-        ax1.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-        # custom formatter to square the tick label
-        ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{int(y**2)}"))
-        ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-
-        ax2 = ax1.twinx()
-        color = 'tab:red'
-        ax2.set_ylabel('Cumulative Publications', color=color)
-        ax2.plot(years, cum_publications, color=color, marker='s', label='Cumulative Publications')
-        ax2.tick_params(axis='y', labelcolor=color)
-        ax2.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-
-        plt.title(f"{author_name} - Cumulative Citations and Publications Over Time")
+        panel_cum(ax1, years, citations, publications)
+        ax1.set_title(f"{author_name}")
         fig.tight_layout()
         plt.savefig(cum_filename)
         print(f"Cumulative plot saved to {cum_filename}")
@@ -162,9 +182,7 @@ def print_table(data, author_name, citedby, pubs):
     console.print(f"[bold]Current h-index:[/] {data.get('hindex')}  (5y h-index: {data.get('hindex5y')})")
     console.print(table)
 
-
-
-def process_author(author_id, force_reload, do_plot, show_table, force_plot):
+def load_author(author_id, force_reload):
     if not force_reload:
         cached = load_cache(author_id)
     else:
@@ -178,7 +196,11 @@ def process_author(author_id, force_reload, do_plot, show_table, force_plot):
     else:
         print(f"Data loaded from cache for author {author_id}.")
         data = cached
+    return data
 
+
+def process_author(author_id, force_reload, do_plot, show_table, force_plot):
+    data = load_author(author_id, force_reload)
     author_name = data.get('name')
     citedby = data.get('citedby_year', {})
     pubs = data.get('pubs_per_year', {})
@@ -190,6 +212,44 @@ def process_author(author_id, force_reload, do_plot, show_table, force_plot):
         plot_data(author_name, citedby, pubs, force_plot)
 
     return author_name
+
+
+class AuthorsList:
+    def __init__(self, authors):
+        self.authors = authors
+
+    def __iter__(self):
+        return iter(self.authors.keys())
+    
+    def __getitem__(self, key):
+        return self.authors[key]
+    
+    def __setitem__(self, key, value):
+        self.authors[key] = value
+
+    @classmethod
+    def load(cls, file_path):
+        if not os.path.exists(file_path):
+            print(f"File not found: {file_path}")
+            sys.exit(1)
+        # Read IDs, process, and update file
+        authors = {}
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                lst = stripped.split()
+                author_id = lst[0]
+                authors[author_id] = lst[1:]
+        return cls(authors)
+    
+    def save(self, file_path):
+        with open(file_path, 'w', encoding='utf-8') as f:
+            for author_id, data in self.authors.items():
+                author_name, *_ = data
+                f.write(f"{author_id}\t{author_name}\n")
+        print(f"Updated file with author names: {file_path}")
 
 
 def main():
@@ -220,34 +280,15 @@ def main():
         process_author(args.author_id, args.force, args.plot, args.table, args.force_plot)
     elif args.command == 'list':
         file_path = args.file_path
-        if not os.path.exists(file_path):
-            print(f"File not found: {file_path}")
-            sys.exit(1)
-        # Read IDs, process, and update file
-        ids = []
-        author_data_list = []
-        with open(file_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                author_id = stripped.split()[0]
-                author_name = process_author(author_id, args.force, args.plot, args.table, args.force_plot)
-                ids.append((author_id, author_name))
-                if args.grid:
-                    data = load_cache(author_id) or fetch_author_data(author_id)
-                    citedby = data.get('citedby_year', {})
-                    pubs = data.get('pubs_per_year', {})
-                    author_data_list.append((author_name, citedby, pubs))
+        authors = AuthorsList.load(file_path)
+        for author_id in authors:
+            author_name = process_author(author_id, args.force, args.plot, args.table, args.force_plot)
+            authors[author_id] = [author_name]
 
-        with open(file_path, 'w', encoding='utf-8') as f:
-            for author_id, author_name in ids:
-                f.write(f"{author_id}\t{author_name}\n")
+        authors.save(file_path)
         print(f"Updated file with author names: {file_path}")
+    
 
-        # Generate grid plot if requested
-        if args.grid and author_data_list:
-            plot_multi_authors_grid(author_data_list, args.force_plot)
 
 if __name__ == "__main__":
     main()
