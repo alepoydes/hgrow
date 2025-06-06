@@ -5,6 +5,7 @@ from scholarly import scholarly
 from rich.console import Console
 from rich.table import Table
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 
 
 def load_cache(author_id, cache_dir="cache"):
@@ -63,34 +64,75 @@ def fetch_author_data(author_id):
 
 def plot_data(author_name, citedby, pubs, force_plot):
     os.makedirs("plots", exist_ok=True)
-    filename = f"plots/{author_name.replace(' ', '_')}.pdf"
-    if os.path.exists(filename) and not force_plot:
-        print(f"Plot already exists at {filename}; skipping (use --force to overwrite).")
-        return
+    # index plot
+    idx_filename = f"plots/idx_{author_name.replace(' ', '_')}.pdf"
+    if not os.path.exists(idx_filename) or force_plot:
+        years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
+        years_str = [str(y) for y in years]
+        citations = [citedby.get(year, 0) for year in years_str]
+        publications = [pubs.get(year, 0) for year in years_str]
 
-    years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
-    years_str = [str(y) for y in years]
-    citations = [citedby.get(year, 0) for year in years_str]
-    publications = [pubs.get(year, 0) for year in years_str]
+        fig, ax1 = plt.subplots()
+        color = 'tab:blue'
+        ax1.set_xlabel('Year')
+        ax1.set_ylabel('Citations', color=color)
+        ax1.plot(years, citations, color=color, marker='o', label='Citations')
+        ax1.tick_params(axis='y', labelcolor=color)
+        ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
-    fig, ax1 = plt.subplots()
-    color = 'tab:blue'
-    ax1.set_xlabel('Year')
-    ax1.set_ylabel('Citations', color=color)
-    ax1.plot(years, citations, color=color, marker='o', label='Citations')
-    ax1.tick_params(axis='y', labelcolor=color)
+        ax2 = ax1.twinx()
+        color = 'tab:red'
+        ax2.set_ylabel('Publications', color=color)
+        ax2.plot(years, publications, color=color, marker='s', label='Publications')
+        ax2.tick_params(axis='y', labelcolor=color)
 
-    ax2 = ax1.twinx()
-    color = 'tab:red'
-    ax2.set_ylabel('Publications', color=color)
-    ax2.plot(years, publications, color=color, marker='s', label='Publications')
-    ax2.tick_params(axis='y', labelcolor=color)
+        plt.title(f"{author_name} - Citations and Publications Over Time")
+        fig.tight_layout()
+        plt.savefig(idx_filename)
+        print(f"Index plot saved to {idx_filename}")
+        plt.close()
+    else:
+        print(f"Index plot already exists at {idx_filename}; skipping (use --force-plot to overwrite).)")
 
-    plt.title(f"{author_name} - Citations and Publications Over Time")
-    fig.tight_layout()
-    plt.savefig(filename)
-    print(f"Plot saved to {filename}")
-    plt.close()
+    # cumulative plot
+    cum_filename = f"plots/cum_{author_name.replace(' ', '_')}.pdf"
+    if not os.path.exists(cum_filename) or force_plot:
+        years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
+        years_str = [str(y) for y in years]
+        citations = [citedby.get(year, 0) for year in years_str]
+        publications = [pubs.get(year, 0) for year in years_str]
+        # compute cumulative sums
+        cum_citations = []
+        cum_publications = []
+        total_cit = 0
+        total_pub = 0
+        for c, p in zip(citations, publications):
+            total_cit += c
+            total_pub += p
+            cum_citations.append(total_cit)
+            cum_publications.append(total_pub)
+
+        fig, ax1 = plt.subplots()
+        color = 'tab:blue'
+        ax1.set_xlabel('Year')
+        ax1.set_ylabel('Cumulative Citations', color=color)
+        ax1.plot(years, cum_citations, color=color, marker='o', label='Cumulative Citations')
+        ax1.tick_params(axis='y', labelcolor=color)
+        ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+
+        ax2 = ax1.twinx()
+        color = 'tab:red'
+        ax2.set_ylabel('Cumulative Publications', color=color)
+        ax2.plot(years, cum_publications, color=color, marker='s', label='Cumulative Publications')
+        ax2.tick_params(axis='y', labelcolor=color)
+
+        plt.title(f"{author_name} - Cumulative Citations and Publications Over Time")
+        fig.tight_layout()
+        plt.savefig(cum_filename)
+        print(f"Cumulative plot saved to {cum_filename}")
+        plt.close()
+    else:
+        print(f"Cumulative plot already exists at {cum_filename}; skipping (use --force-plot to overwrite).)")
 
 
 def process_author(author_id, force_reload, do_plot, show_table, force_plot):
