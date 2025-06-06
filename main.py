@@ -160,6 +160,7 @@ def plot_data(author_name, citedby, pubs, force_plot):
     else:
         print(f"Cumulative plot already exists at {cum_filename}; skipping (use --force-plot to overwrite).")
 
+
 def print_table(data, author_name, citedby, pubs):
     all_years = set()
     all_years.update(int(y) for y in citedby.keys())
@@ -213,6 +214,23 @@ def process_author(author_id, force_reload, do_plot, show_table, force_plot):
 
     return author_name
 
+def process_author_axis(ax1, author_id, force_reload):
+    data = load_author(author_id, force_reload)
+    author_name = data.get('name')
+    citedby = data.get('citedby_year', {})
+    pubs = data.get('pubs_per_year', {})
+
+    years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
+    years = np.asarray(years)
+    years_str = [str(y) for y in years]
+    citations = [citedby.get(year, 0) for year in years_str]
+    publications = [pubs.get(year, 0) for year in years_str]
+
+    panel_cum(ax1, years, citations, publications)
+    ax1.set_title(f"{author_name}")
+
+    return author_name
+
 
 class AuthorsList:
     def __init__(self, authors):
@@ -226,6 +244,9 @@ class AuthorsList:
     
     def __setitem__(self, key, value):
         self.authors[key] = value
+
+    def __len__(self):
+        return len(self.authors)
 
     @classmethod
     def load(cls, file_path):
@@ -272,7 +293,11 @@ def main():
     list_parser.add_argument('-p', '--plot', action='store_true', help='Generate and save plots as PDF')
     list_parser.add_argument('-t', '--table', action='store_true', help='Print tables to console')
     list_parser.add_argument('--force-plot', action='store_true', help='Force regenerating plots even if they exist')
-    list_parser.add_argument('--grid', action='store_true', help='Generate a grid plot of multiple authors')
+
+    # Subcommand: list
+    combo_parser = subparsers.add_parser('combo', help='Plot multiple authors metric in single figure')
+    combo_parser.add_argument('file_path', help='File with author IDs in first column')
+    combo_parser.add_argument('-f', '--force', action='store_true', help='Force reloading data instead of using cache')
 
     args = parser.parse_args()
 
@@ -284,9 +309,32 @@ def main():
         for author_id in authors:
             author_name = process_author(author_id, args.force, args.plot, args.table, args.force_plot)
             authors[author_id] = [author_name]
-
         authors.save(file_path)
-        print(f"Updated file with author names: {file_path}")
+    elif args.command == 'combo':
+        file_path = args.file_path
+        authors = AuthorsList.load(file_path)
+        ncols = 4
+        nrows = (len(authors)-1)//ncols+1
+        fig, axes = plt.subplots(ncols=ncols,nrows=nrows, figsize=(5*ncols,3*nrows), layout='compressed', squeeze=False)
+        
+        for n, author_id in enumerate(authors):
+            # print(f"{n=} {author_id=}")
+            author_name = process_author_axis(axes[n//ncols,n%ncols], author_id, args.force)
+            authors[author_id] = [author_name]
+        for k in range(n,ncols*nrows):
+            axes[k//ncols,k%ncols].set_axis_off()
+        
+        # Save
+        os.makedirs("plots", exist_ok=True)
+        plot_filename = f"{file_path}.cum.pdf"
+        fig.savefig(plot_filename)
+        print(f"Index plot saved to {plot_filename}")
+        plt.close()
+        # Update authors.
+        authors.save(file_path)
+    else:
+        print(f"Unknown command {args.command}")
+        sys.exit(1)
     
 
 
