@@ -92,9 +92,9 @@ def plot_data(author_name, citedby, pubs, force_plot):
         print(f"Index plot saved to {idx_filename}")
         plt.close()
     else:
-        print(f"Index plot already exists at {idx_filename}; skipping (use --force-plot to overwrite).)")
+        print(f"Index plot already exists at {idx_filename}; skipping (use --force-plot to overwrite).")
 
-    # cumulative plot
+    # cumulative plot with sqrt scale for citations
     cum_filename = f"plots/cum_{author_name.replace(' ', '_')}.pdf"
     if not os.path.exists(cum_filename) or force_plot:
         years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
@@ -116,8 +116,13 @@ def plot_data(author_name, citedby, pubs, force_plot):
         color = 'tab:blue'
         ax1.set_xlabel('Year')
         ax1.set_ylabel('Cumulative Citations', color=color)
-        ax1.plot(years, cum_citations, color=color, marker='o', label='Cumulative Citations')
+        # apply sqrt scaling on y data
+        sqrt_cum_citations = [val**0.5 for val in cum_citations]
+        ax1.plot(years, sqrt_cum_citations, color=color, marker='o', label='Cumulative Citations (sqrt)')
         ax1.tick_params(axis='y', labelcolor=color)
+        ax1.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+        # custom formatter to square the tick label
+        ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{int(y**2)}"))
         ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
         ax2 = ax1.twinx()
@@ -125,6 +130,7 @@ def plot_data(author_name, citedby, pubs, force_plot):
         ax2.set_ylabel('Cumulative Publications', color=color)
         ax2.plot(years, cum_publications, color=color, marker='s', label='Cumulative Publications')
         ax2.tick_params(axis='y', labelcolor=color)
+        ax2.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
         plt.title(f"{author_name} - Cumulative Citations and Publications Over Time")
         fig.tight_layout()
@@ -132,11 +138,33 @@ def plot_data(author_name, citedby, pubs, force_plot):
         print(f"Cumulative plot saved to {cum_filename}")
         plt.close()
     else:
-        print(f"Cumulative plot already exists at {cum_filename}; skipping (use --force-plot to overwrite).)")
+        print(f"Cumulative plot already exists at {cum_filename}; skipping (use --force-plot to overwrite).")
+
+def print_table(data, author_name, citedby, pubs):
+    all_years = set()
+    all_years.update(int(y) for y in citedby.keys())
+    all_years.update(int(y) for y in pubs.keys())
+    sorted_years = sorted(all_years)
+
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Year", style="dim", width=6)
+    table.add_column("Citations", justify="right")
+    table.add_column("Publications", justify="right")
+
+    for year in sorted_years:
+        year_str = str(year)
+        citations_str = str(citedby.get(year_str, 0))
+        pubs_str = str(pubs.get(year_str, 0))
+        table.add_row(year_str, citations_str, pubs_str)
+
+    console = Console()
+    console.print(f"[bold]Author:[/] {author_name} ({data.get('affiliation')})")
+    console.print(f"[bold]Current h-index:[/] {data.get('hindex')}  (5y h-index: {data.get('hindex5y')})")
+    console.print(table)
+
 
 
 def process_author(author_id, force_reload, do_plot, show_table, force_plot):
-    console = Console()
     if not force_reload:
         cached = load_cache(author_id)
     else:
@@ -156,25 +184,7 @@ def process_author(author_id, force_reload, do_plot, show_table, force_plot):
     pubs = data.get('pubs_per_year', {})
 
     if show_table:
-        all_years = set()
-        all_years.update(int(y) for y in citedby.keys())
-        all_years.update(int(y) for y in pubs.keys())
-        sorted_years = sorted(all_years)
-
-        table = Table(show_header=True, header_style="bold magenta")
-        table.add_column("Year", style="dim", width=6)
-        table.add_column("Citations", justify="right")
-        table.add_column("Publications", justify="right")
-
-        for year in sorted_years:
-            year_str = str(year)
-            citations = str(citedby.get(year_str, 0))
-            publications = str(pubs.get(year_str, 0))
-            table.add_row(year_str, citations, publications)
-
-        console.print(f"[bold]Author:[/] {author_name} ({data.get('affiliation')})")
-        console.print(f"[bold]Current h-index:[/] {data.get('hindex')}  (5y h-index: {data.get('hindex5y')})")
-        console.print(table)
+        print_table(data, author_name, citedby, pubs)
 
     if do_plot:
         plot_data(author_name, citedby, pubs, force_plot)
@@ -202,6 +212,7 @@ def main():
     list_parser.add_argument('-p', '--plot', action='store_true', help='Generate and save plots as PDF')
     list_parser.add_argument('-t', '--table', action='store_true', help='Print tables to console')
     list_parser.add_argument('--force-plot', action='store_true', help='Force regenerating plots even if they exist')
+    list_parser.add_argument('--grid', action='store_true', help='Generate a grid plot of multiple authors')
 
     args = parser.parse_args()
 
@@ -214,22 +225,29 @@ def main():
             sys.exit(1)
         # Read IDs, process, and update file
         ids = []
+        author_data_list = []
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 stripped = line.strip()
                 if not stripped:
                     continue
-                ids.append(stripped.split()[0])
-
-        updated_lines = []
-        for author_id in ids:
-            author_name = process_author(author_id, args.force, args.plot, args.table, args.force_plot)
-            updated_lines.append((author_id, author_name))
+                author_id = stripped.split()[0]
+                author_name = process_author(author_id, args.force, args.plot, args.table, args.force_plot)
+                ids.append((author_id, author_name))
+                if args.grid:
+                    data = load_cache(author_id) or fetch_author_data(author_id)
+                    citedby = data.get('citedby_year', {})
+                    pubs = data.get('pubs_per_year', {})
+                    author_data_list.append((author_name, citedby, pubs))
 
         with open(file_path, 'w', encoding='utf-8') as f:
-            for author_id, author_name in updated_lines:
+            for author_id, author_name in ids:
                 f.write(f"{author_id}\t{author_name}\n")
         print(f"Updated file with author names: {file_path}")
+
+        # Generate grid plot if requested
+        if args.grid and author_data_list:
+            plot_multi_authors_grid(author_data_list, args.force_plot)
 
 if __name__ == "__main__":
     main()
