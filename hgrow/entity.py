@@ -2,6 +2,7 @@ from typing import Dict, Callable, List, Set
 import time
 
 from scholarly import scholarly
+import numpy as np
 
 from .storage import save_cache, load_cache
 
@@ -69,6 +70,10 @@ class Author(Entity):
             'pubs_per_year': self._rule_author,
             'hindex': self._rule_author,
             'hindex5y': self._rule_author,
+            'years': self._rule_years, 
+            'years_str': self._rule_years, 
+            'citations': self._rule_years, 
+            'publications': self._rule_years,
         }
 
     def _rule_author(self):
@@ -107,4 +112,20 @@ class Author(Entity):
         data['fetched_at'] = time.time()
         return data, {}
 
+    def _rule_years(self, min_year=1960):
+        citedby = self.get('citedby_year')
+        pubs = self.get('pubs_per_year')
+
+        years = set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys())
+        years = sorted(filter(lambda y:y>min_year, years))
+        years_str = [str(y) for y in years]
+        citations = [citedby.get(year, 0) for year in years_str]
+        publications = [pubs.get(year, 0) for year in years_str]
+
+        return {}, {
+            'years':np.asarray(years, dtype=np.int32), 
+            'years_str':years_str, 
+            'citations':np.asarray(citations, dtype=np.int32), 
+            'publications': np.asarray(publications, dtype=np.int32),
+            }
 

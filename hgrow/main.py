@@ -71,19 +71,14 @@ def panel_cum(ax1, years, citations, publications, nfit=5):
     ax2.text(0.05, 0.95, f'{pa:.2f}', ha='left', va='center', transform=ax2.transAxes, color=color)
 
 
-def plot_data(author_name, citedby, pubs, force_plot):
-    years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
-    years = np.asarray(years)
-    years_str = [str(y) for y in years]
-    citations = [citedby.get(year, 0) for year in years_str]
-    publications = [pubs.get(year, 0) for year in years_str]
-
+def plot_data(author, force_plot):
     os.makedirs("plots", exist_ok=True)
     # index plot
+    author_name = author.get('name')
     idx_filename = f"plots/idx_{author_name.replace(' ', '_')}.pdf"
     if not os.path.exists(idx_filename) or force_plot:
         fig, ax1 = plt.subplots()
-        panel_idx(ax1, years, citations, publications)
+        panel_idx(ax1, author.get('years'), author.get('citations'), author.get('publications'))
         ax1.set_title(f"{author_name}")
         fig.tight_layout()
         plt.savefig(idx_filename)
@@ -96,7 +91,7 @@ def plot_data(author_name, citedby, pubs, force_plot):
     cum_filename = f"plots/cum_{author_name.replace(' ', '_')}.pdf"
     if not os.path.exists(cum_filename) or force_plot:
         fig, ax1 = plt.subplots()
-        panel_cum(ax1, years, citations, publications)
+        panel_cum(ax1, author.get('years'), author.get('citations'), author.get('publications'))
         ax1.set_title(f"{author_name}")
         fig.tight_layout()
         plt.savefig(cum_filename)
@@ -106,11 +101,10 @@ def plot_data(author_name, citedby, pubs, force_plot):
         print(f"Cumulative plot already exists at {cum_filename}; skipping (use --force-plot to overwrite).")
 
 
-def print_table(data, author_name, citedby, pubs):
-    all_years = set()
-    all_years.update(int(y) for y in citedby.keys())
-    all_years.update(int(y) for y in pubs.keys())
-    sorted_years = sorted(all_years)
+def print_table(author):
+    sorted_years = author.get('years_str')
+    citedby = author.get('citedby_year')
+    pubs = author.get('pubs_per_year')
 
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Year", style="dim", width=6)
@@ -124,8 +118,8 @@ def print_table(data, author_name, citedby, pubs):
         table.add_row(year_str, citations_str, pubs_str)
 
     console = Console()
-    console.print(f"[bold]Author:[/] {author_name} ({data.get('affiliation')})")
-    console.print(f"[bold]Current h-index:[/] {data.get('hindex')}  (5y h-index: {data.get('hindex5y')})")
+    console.print(f"[bold]Author:[/] {author.get('name')} ({author.get('affiliation')})")
+    console.print(f"[bold]Current h-index:[/] {author.get('hindex')}  (5y h-index: {author.get('hindex5y')})")
     console.print(table)
 
 def load_author(author_id, force_reload) -> Author:
@@ -138,40 +132,27 @@ def load_author(author_id, force_reload) -> Author:
 
 
 def process_author(author_id, force_reload, do_plot, show_table, force_plot):
-    data = load_author(author_id, force_reload)
-    data.save()
-    author_name = data.get('name')
-    citedby = data.get('citedby_year')
-    pubs = data.get('pubs_per_year')
+    author = load_author(author_id, force_reload)
+    author_name = author.get('name')
 
     if show_table:
-        print_table(data, author_name, citedby, pubs)
+        print_table(author)
 
     if do_plot:
-        plot_data(author_name, citedby, pubs, force_plot)
+        plot_data(author, force_plot)
 
+    author.save()
     return author_name
 
 def process_author_axis(ax1, author_id, force_reload, min_year=1960):
-    data = load_author(author_id, force_reload)
-    data.save()
-    author_name = data.get('name')
-    citedby = data.get('citedby_year')
-    pubs = data.get('pubs_per_year')
+    author = load_author(author_id, force_reload)
+    author_name = author.get('name')
 
-    years = set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys())
-    years = sorted(filter(lambda y:y>min_year, years))
-    years = np.asarray(years)
-    years_str = [str(y) for y in years]
-    citations = [citedby.get(year, 0) for year in years_str]
-    publications = [pubs.get(year, 0) for year in years_str]
-
-    panel_cum(ax1, years, citations, publications)
+    panel_cum(ax1, author.get('years'), author.get('citations'), author.get('publications'))
     ax1.set_title(f"{author_name}")
 
+    author.save()
     return author_name
-
-
 
 
 def cli():
