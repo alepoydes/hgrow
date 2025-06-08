@@ -1,50 +1,12 @@
 import os
-# import json
-import time
-import sys
-from scholarly import scholarly
 from rich.console import Console
 from rich.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 
-from .storage import save_cache, load_cache
-
-def fetch_author_data(author_id):
-    """
-    Fetch author data from Google Scholar using scholarly. Returns a dict with relevant fields including yearly citations and publications count.
-    """
-    print(f"Searching for author ID: {author_id}...")
-    author = scholarly.search_author_id(author_id)
-    print("Author found. Pausing briefly before filling profile...")
-    time.sleep(5)
-
-    print("Filling author profile...")
-    author_filled = scholarly.fill(author, sections=["indices", "basics", "publications", "counts"])  
-    print("Profile filled. Extracting data...")
-
-    data = {}
-    data['name'] = author_filled.get('name')
-    data['affiliation'] = author_filled.get('affiliation')
-    # Yearly citations
-    if 'cites_per_year' in author_filled:
-        data['citedby_year'] = {str(year): count for year, count in author_filled['cites_per_year'].items()}
-    else:
-        data['citedby_year'] = {}
-    # Current h-index
-    data['hindex'] = author_filled.get('hindex', 0)
-    data['hindex5y'] = author_filled.get('hindex5y', 0)
-    # Publications per year
-    pubs_per_year = {}
-    pubs = author_filled.get('publications', [])
-    for pub in pubs:
-        pub_year = pub.get('bib', {}).get('pub_year')
-        if pub_year and pub_year.isdigit():
-            pubs_per_year[pub_year] = pubs_per_year.get(pub_year, 0) + 1
-    data['pubs_per_year'] = pubs_per_year
-    data['fetched_at'] = time.time()
-    return data
+from .entity import Author
+from .batch import AuthorsList
 
 def linear_fit(x, y):
     """Fit model y=a*x+b."""
@@ -166,28 +128,21 @@ def print_table(data, author_name, citedby, pubs):
     console.print(f"[bold]Current h-index:[/] {data.get('hindex')}  (5y h-index: {data.get('hindex5y')})")
     console.print(table)
 
-def load_author(author_id, force_reload):
+def load_author(author_id, force_reload) -> Author:
     if not force_reload:
-        cached = load_cache(author_id)
+        author = Author.load(author_id)
     else:
-        cached = None
+        author = Author(idx=author_id)
         print("Force reload enabled; skipping cache.")
-
-    if cached is None:
-        print(f"Cache not used for author {author_id}. Fetching new data...")
-        data = fetch_author_data(author_id)
-        save_cache(author_id, data)
-    else:
-        print(f"Data loaded from cache for author {author_id}.")
-        data = cached
-    return data
+    return author
 
 
 def process_author(author_id, force_reload, do_plot, show_table, force_plot):
     data = load_author(author_id, force_reload)
+    data.save()
     author_name = data.get('name')
-    citedby = data.get('citedby_year', {})
-    pubs = data.get('pubs_per_year', {})
+    citedby = data.get('citedby_year')
+    pubs = data.get('pubs_per_year')
 
     if show_table:
         print_table(data, author_name, citedby, pubs)
@@ -199,9 +154,10 @@ def process_author(author_id, force_reload, do_plot, show_table, force_plot):
 
 def process_author_axis(ax1, author_id, force_reload, min_year=1960):
     data = load_author(author_id, force_reload)
+    data.save()
     author_name = data.get('name')
-    citedby = data.get('citedby_year', {})
-    pubs = data.get('pubs_per_year', {})
+    citedby = data.get('citedby_year')
+    pubs = data.get('pubs_per_year')
 
     years = set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys())
     years = sorted(filter(lambda y:y>min_year, years))
@@ -216,45 +172,6 @@ def process_author_axis(ax1, author_id, force_reload, min_year=1960):
     return author_name
 
 
-class AuthorsList:
-    def __init__(self, authors):
-        self.authors = authors
-
-    def __iter__(self):
-        return iter(self.authors.keys())
-    
-    def __getitem__(self, key):
-        return self.authors[key]
-    
-    def __setitem__(self, key, value):
-        self.authors[key] = value
-
-    def __len__(self):
-        return len(self.authors)
-
-    @classmethod
-    def load(cls, file_path):
-        if not os.path.exists(file_path):
-            print(f"File not found: {file_path}")
-            sys.exit(1)
-        # Read IDs, process, and update file
-        authors = {}
-        with open(file_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                lst = stripped.split()
-                author_id = lst[0]
-                authors[author_id] = lst[1:]
-        return cls(authors)
-    
-    def save(self, file_path):
-        with open(file_path, 'w', encoding='utf-8') as f:
-            for author_id, data in self.authors.items():
-                author_name, *_ = data
-                f.write(f"{author_id}\t{author_name}\n")
-        print(f"Updated file with author names: {file_path}")
 
 
 def cli():
