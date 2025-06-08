@@ -1,4 +1,4 @@
-from typing import Dict, Callable
+from typing import Dict, Callable, List, Set
 import time
 
 from scholarly import scholarly
@@ -6,12 +6,13 @@ from scholarly import scholarly
 from .storage import save_cache, load_cache
 
 class Entity:
-    def __init__(self, idx:str, data:dict=None):
+    def __init__(self, idx:str, data:dict=None, cacheable:Set[str]=None):
         self._idx = idx 
         self._data = {'fetched_at':None} if data is None else data
         self._requested = set()
         self._rules = self.get_rules()
         self._updated = False
+        self._cacheable = set(data.keys()) if cacheable is None else cacheable
 
     @classmethod
     def load(cls, idx:str):
@@ -20,7 +21,7 @@ class Entity:
 
     def save(self):
         if self._updated:
-            save_cache(self._idx, self._data)
+            save_cache(self._idx, {k:self._data[k] for k in self._data.keys() if k in self._cacheable})
             self._updated = False
 
     def get_rules(self) -> Dict[str, Callable]:
@@ -35,20 +36,23 @@ class Entity:
         if key not in self._data:
             if key in self._rules:
                 self._requested.add(key)
-                pairs = self._rules[key]()
+                cacheable, noncacheable = self._rules[key]()
                 self._requested.remove(key)
-                self.append(pairs)
+                self.append(cacheable, cacheable=True)
+                self.append(noncacheable, cacheable=False)
             else:
                 raise KeyError(f"No rule to generate '{key}'")
         return self._data[key]
 
-    def set(self, key, value):
+    def set(self, key, value, cacheable:bool=False):
         self._data[key] = value
-        self._updated = True
+        if cacheable:
+            self._cacheable.add(key)
+            self._updated = True
 
-    def append(self, pairs):
+    def append(self, pairs, cacheable:bool=False):
         for key, value in pairs.items():
-            self.set(key, value)
+            self.set(key, value, cacheable)
 
 ###############################################################################################
 
@@ -101,6 +105,6 @@ class Author(Entity):
                 pubs_per_year[pub_year] = pubs_per_year.get(pub_year, 0) + 1
         data['pubs_per_year'] = pubs_per_year
         data['fetched_at'] = time.time()
-        return data
+        return data, {}
 
 
