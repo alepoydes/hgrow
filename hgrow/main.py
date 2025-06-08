@@ -214,13 +214,14 @@ def process_author(author_id, force_reload, do_plot, show_table, force_plot):
 
     return author_name
 
-def process_author_axis(ax1, author_id, force_reload):
+def process_author_axis(ax1, author_id, force_reload, min_year=1960):
     data = load_author(author_id, force_reload)
     author_name = data.get('name')
     citedby = data.get('citedby_year', {})
     pubs = data.get('pubs_per_year', {})
 
-    years = sorted(set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys()))
+    years = set(int(y) for y in citedby.keys()) | set(int(y) for y in pubs.keys())
+    years = sorted(filter(lambda y:y>min_year, years))
     years = np.asarray(years)
     years_str = [str(y) for y in years]
     citations = [citedby.get(year, 0) for year in years_str]
@@ -273,7 +274,7 @@ class AuthorsList:
         print(f"Updated file with author names: {file_path}")
 
 
-def main():
+def cli():
     import argparse, sys
     parser = argparse.ArgumentParser(description="Google Scholar author data utility.")
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -321,7 +322,7 @@ def main():
             # print(f"{n=} {author_id=}")
             author_name = process_author_axis(axes[n//ncols,n%ncols], author_id, args.force)
             authors[author_id] = [author_name]
-        for k in range(n,ncols*nrows):
+        for k in range(len(authors),ncols*nrows):
             axes[k//ncols,k%ncols].set_axis_off()
         
         # Save
@@ -336,7 +337,3 @@ def main():
         print(f"Unknown command {args.command}")
         sys.exit(1)
     
-
-
-if __name__ == "__main__":
-    main()

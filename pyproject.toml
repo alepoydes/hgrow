@@ -1,11 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
 [project]
 name = "hgrow"
 version = "0.1.0"
-description = "Add your description here"
+description = "Publication activity analyzer"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "matplotlib>=3.10.3",
     "rich>=14.0.0",
     "scholarly>=1.7.11",
+]
+authors = [
+    { name = "Igor Lobanov", email = "lobanov.igor@gmail.com" }
+]
+license = "MIT"
+license-files = ["LICENSE*"]
+keywords = ["magnetization","topology","soliton","liquid crystal","visualization","physics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.urls]
+Repository = "https://github.com/alepoydes/hgrow"
+
+[project.scripts]
+hgrow = "hgrow:cli"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
 ]
