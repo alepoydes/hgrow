@@ -3,7 +3,7 @@ import numpy as np
 
 from .entity import Author
 from .batch import AuthorsList
-from .mode import ModePubCit, ModeCumPubCit
+from .mode import ModePubCit, ModeCumPubCit, ModeProduct
 from .plot import ComboPlot, TablePlot, SinglePlot
 
 ##############################################################################################################
@@ -33,7 +33,7 @@ def cli():
     group2.add_argument('-p', '--plot', action='store_true', help='Save separate figure for each author')
     group2.add_argument('-c', '--combo', action='store_true', help='Save single figure containing plots for all authors')
 
-    modes = ['idx','cum']
+    modes = ['idx','cum','prod']
     parser.add_argument('-m', '--mode',dest='mode', default='idx', help=f'Analysis mode: {" ".join(modes)}', choices=modes)
 
     args = parser.parse_args()
@@ -51,6 +51,8 @@ def cli():
         mode = ModePubCit()
     elif args.mode == 'cum':
         mode = ModeCumPubCit()
+    elif args.mode == 'prod':
+        mode = ModeProduct()
     else:
         raise ValueError(f'Unexpected mode "{args.mode}"')
 
