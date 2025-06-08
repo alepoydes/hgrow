@@ -76,6 +76,8 @@ class Author(Entity):
             'publications': self._rule_years,
         }
 
+    ###
+
     def _rule_author(self):
         """
         Fetch author data from Google Scholar using scholarly. Returns a dict with relevant fields including yearly citations and publications count.
@@ -111,6 +113,8 @@ class Author(Entity):
         data['pubs_per_year'] = pubs_per_year
         data['fetched_at'] = time.time()
         return data, {}
+
+    ###
 
     def _rule_years(self, min_year=1960):
         citedby = self.get('citedby_year')
