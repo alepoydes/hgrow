@@ -13,7 +13,7 @@ class Entity:
         self._requested = set()
         self._rules = self.get_rules()
         self._updated = False
-        self._cacheable = set(data.keys()) if cacheable is None else cacheable
+        self._cacheable = set(self._data.keys()) if cacheable is None else cacheable
 
     @classmethod
     def load(cls, idx:str):
@@ -85,7 +85,7 @@ class Author(Entity):
         author_id = self._idx
         print(f"Searching for author ID: {author_id}...")
         author = scholarly.search_author_id(author_id)
-        print(f"Author found ({author_id=}, {author=}). Pausing briefly before filling profile...")
+        print(f"Author found. Pausing briefly before filling profile...")
         self.pause()
 
         print("Filling author profile...")

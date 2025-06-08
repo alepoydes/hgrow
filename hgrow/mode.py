@@ -61,7 +61,8 @@ class DoublePlotter(Plotter):
         color = self.left_color
         ax1.set_xlabel('Year')
         ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-        ax1.set_xlim(self.years[0], self.years[-1])
+        if self.years.shape[0]>0:
+            ax1.set_xlim(self.years[0], self.years[-1])
 
         ax1.set_ylabel(self.left_label, color=color)
         ax1.plot(self.years, self.left_scale.forward(self.left_data), color=color, marker='o', label=self.left_label)

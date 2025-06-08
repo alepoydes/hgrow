@@ -75,6 +75,7 @@ def cli():
         author = load_author(author_id, force_reload=args.force)
         authors[author_id] = [author.get('name')]
         plot.process(author)
+        author.save()
     plot.finish()
 
     # Save updates authors list.
