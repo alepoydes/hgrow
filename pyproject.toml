@@ -36,4 +36,5 @@ hgrow = "hgrow:cli"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
+    '/tmp',
 ]

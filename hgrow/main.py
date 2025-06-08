@@ -1,5 +1,5 @@
 import os
-import json
+# import json
 import time
 import sys
 from scholarly import scholarly
@@ -9,24 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 
-
-def load_cache(author_id, cache_dir="cache"):
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, f"{author_id}.json")
-    if os.path.exists(cache_path):
-        print(f"Loading cache from {cache_path}...")
-        with open(cache_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return None
-
-
-def save_cache(author_id, data, cache_dir="cache"):
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, f"{author_id}.json")
-    print(f"Saving data to cache at {cache_path}...")
-    with open(cache_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
+from .storage import save_cache, load_cache
 
 def fetch_author_data(author_id):
     """
